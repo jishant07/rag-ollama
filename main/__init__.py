@@ -31,7 +31,7 @@ def document_uploader():
 
         chunks = document_splitter(documents=doc)
 
-        qcollection = getCollection("test_user_collection")
+        qcollection = getCollection("new_collection")
         qcollection.add_documents(documents=chunks, ids = [str(uuid4()) for _ in range(len(chunks))])
 
         return json.dumps({
@@ -53,20 +53,19 @@ def get_answer():
 
         ---
         Answer the student's question {question} based on the context given above.
-        Make the answer as descriptive as you can and make it easier to understand.
-        Used good level of vocabulary but make the student understand the new words along the way.
+        Don't mention that the answer is talking from context.
     """
 
-    query_text = "Did Santigo know Alchemy in the book? Where is he roaming around?"
+    query_text = request.form["question"]
 
-    vector_store = getCollection("test_user_collection")
+    vector_store = getCollection("new_collection")
 
     results = vector_store.similarity_search_with_score(
-        query=query_text, k=5
+        query=query_text, k=3
     )
 
-    for doc, score in results:
-        print(f"* [SIM={score:3f}] {doc.page_content} [{doc.metadata}]")
+    # for doc, score in results:
+    #     print(f"* [SIM={score:3f}] {doc.page_content} [{doc.metadata}]")
 
     context_text = "\n\n---\n\n".join([doc.page_content for doc, _score in results])
     prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
