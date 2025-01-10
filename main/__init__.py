@@ -5,6 +5,7 @@ from langchain_community.document_loaders import PyPDFLoader
 from .helper_functions import *
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_community.llms.ollama import Ollama
+from qdrant_client.models import Filter, MatchValue, FieldCondition, SearchParams
 
 from uuid import uuid4
 
@@ -17,6 +18,10 @@ def start():
         "message" : "success", 
         "result" : "Server is up and running"
     })
+
+def format_chunk(chunk, filename):
+    chunk.metadata["source"] = filename
+    return chunk
 
 @app.route("/upload", methods = ["POST"])
 def document_uploader():
@@ -31,7 +36,9 @@ def document_uploader():
 
         chunks = document_splitter(documents=doc)
 
-        qcollection = getCollection("new_collection")
+        chunks = [format_chunk(chunk, filename=filename) for chunk in chunks]
+
+        qcollection = getCollection("test_user_collection")
         qcollection.add_documents(documents=chunks, ids = [str(uuid4()) for _ in range(len(chunks))])
 
         return json.dumps({
@@ -58,11 +65,24 @@ def get_answer():
 
     query_text = request.form["question"]
 
-    vector_store = getCollection("new_collection")
+    vector_store = getCollection("test_user_collection")
 
     results = vector_store.similarity_search_with_score(
-        query=query_text, k=3
+        query=query_text,
+        k=3,
+        query_filter=Filter(
+        should=[
+            FieldCondition(
+                key="metadata.source",
+                match=MatchValue(
+                    value="The Alchemist by Paulo Coelho-1.pdf",
+                ),
+            )
+        ]
+    ),
     )
+
+    # print(results)
 
     # for doc, score in results:
     #     print(f"* [SIM={score:3f}] {doc.page_content} [{doc.metadata}]")
@@ -71,11 +91,9 @@ def get_answer():
     prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
     prompt = prompt_template.format(context= context_text, question = query_text)
 
-    model = Ollama(model="mistral")
-    response_text = model.invoke(prompt)
-    print(response_text)
+    def generate():
+        model = Ollama(model="mistral")
+        for chunk in model.stream(prompt):
+            yield chunk 
 
-    return json.dumps({
-        "status" : "success", 
-        "message" : response_text
-    })
+    return generate(), {"Content-Type": "text/plain"}
