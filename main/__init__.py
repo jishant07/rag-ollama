@@ -1,16 +1,17 @@
 from flask import *
+from config import server_config
 import json
 import os
 from langchain_community.document_loaders import PyPDFLoader
-from .helper_functions import *
+from .vector_helper_functions import *
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_community.llms.ollama import Ollama
 from qdrant_client.models import Filter, MatchValue, FieldCondition, SearchParams
-
 from uuid import uuid4
 
 app = Flask(__name__,template_folder='templates',static_url_path='/static')
 app.config["UPLOAD_FOLDER"] = "./sample_pdfs/uploads/"
+
 
 @app.route("/")
 def start():
@@ -18,6 +19,9 @@ def start():
         "message" : "success", 
         "result" : "Server is up and running"
     })
+
+from .auth import auth
+app.register_blueprint(auth, url_prefix = "/auth")
 
 def format_chunk(chunk, filename):
     chunk.metadata["source"] = filename
@@ -38,7 +42,7 @@ def document_uploader():
 
         chunks = [format_chunk(chunk, filename=filename) for chunk in chunks]
 
-        qcollection = getCollection("test_user_collection")
+        qcollection = getQdrantCollection("test_user_collection")
         qcollection.add_documents(documents=chunks, ids = [str(uuid4()) for _ in range(len(chunks))])
 
         return json.dumps({
@@ -65,7 +69,7 @@ def get_answer():
 
     query_text = request.form["question"]
 
-    vector_store = getCollection("test_user_collection")
+    vector_store = getQdrantCollection("test_user_collection")
 
     results = vector_store.similarity_search_with_score(
         query=query_text,

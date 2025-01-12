@@ -24,7 +24,7 @@ def get_embedding_function():
     return embeddings
 
 
-def getCollection(collection_name):
+def getQdrantCollection(collection_name):
     
     is_exists = client.collection_exists(collection_name=collection_name)
     
@@ -40,3 +40,5 @@ def getCollection(collection_name):
             client = client,
             embedding=get_embedding_function(),
         )
+
+
