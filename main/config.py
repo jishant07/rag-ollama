@@ -9,6 +9,6 @@ else:
     server_config = dotenv_values('.env.local')
 
 
-from mongoengine import connect
+from mongoengine import *
 
 db = connect(host = server_config["DB_URI"], db=server_config["DEFAULT_DATABASE"])
