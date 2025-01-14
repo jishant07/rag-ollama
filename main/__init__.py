@@ -29,9 +29,19 @@ from .document.document import document
 app.register_blueprint(auth, url_prefix = "/auth")
 app.register_blueprint(document, url_prefix = "/document")
 
-def add_data_to_qdrant(data, collection_name):
-    print("DOCUMENT DATA from THREAD", data)
-    print("COLLECTION NAME FROM THREAD", collection_name)
+def format_chunk(chunk, filename):
+    chunk.metadata["source"] = filename
+    return chunk
+
+def add_data_to_qdrant(data, full_document):
+    print("Starting Thread Function...")
+    loader = PyPDFLoader(data["location"])
+    doc = loader.load()
+    chunks = document_splitter(documents=doc)
+    chunks = [format_chunk(chunk, filename=data["name"]) for chunk in chunks]
+    qcollection = getQdrantCollection(full_document["qdrant_collection_name"])
+    qcollection.add_documents(documents=chunks, ids = [str(uuid4()) for _ in range(len(chunks))])
+    print("===Killing thread====" + data["document_id"])
 
 def watch_changes_in_user_document():
     print("Starting Thread...")
@@ -40,18 +50,25 @@ def watch_changes_in_user_document():
         pipeline = [
             {
                 "$match": {
-                    "updateDescription.updatedFields.user_documents": {"$exists": True}
+                    "$and": {
+                        "updateDescription.updatedFields.user_documents": {"$exists": True},
+                        "operationType" : "update"
+                    }
                 }
             }
         ]
         with collection.watch(pipeline = pipeline, full_document="updateLookup") as stream: 
             print("Listening to changes in the User Document")
             for change in stream:
-                collection_name = change['fullDocument']['qdrant_collection_name']
+                print("=======CHANGE STREAM=======", change)
+                full_document = change['fullDocument']
                 list_of_documents = change['updateDescription']['updatedFields']['user_documents']
+
+                print(list_of_documents)
+
                 for document in list_of_documents:
-                    if document["is_active"] == False:
-                        threading.Thread(target=add_data_to_qdrant, daemon=True, name=document['document_id'], args=(document,collection_name)).start()
+                    if document["is_active"] == False and document["document_id"] not in [t.getName() for t in threading.enumerate()]:
+                        threading.Thread(target=add_data_to_qdrant, daemon=False, name=document['document_id'], args=(document,full_document)).start()
     except Exception as e:
         return e
     
@@ -59,10 +76,6 @@ def watch_changes_in_user_document():
 
 change_stream_thread = threading.Thread(target=watch_changes_in_user_document, daemon=True, name="User-Collection-Thread")
 change_stream_thread.start()
-
-# def format_chunk(chunk, filename):
-#     chunk.metadata["source"] = filename
-#     return chunk
 
 # @app.route("/upload", methods = ["POST"])
 # def document_uploader():
