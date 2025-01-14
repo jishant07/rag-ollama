@@ -19,7 +19,7 @@ def upload_document(current_user):
 
             check_if_file_name_exists = User.objects(id = current_user.get_id(), user_documents__name = temp_document.name)
 
-            if len(check_if_file_name_exists) == 0:
+            if len(check_if_file_name_exists) == 0 or True:
 
                 check_path_exists = os.path.exists("./uploads/"+current_user.get_id())
 

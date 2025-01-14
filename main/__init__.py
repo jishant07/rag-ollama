@@ -10,6 +10,7 @@ from qdrant_client.models import Filter, MatchValue, FieldCondition, SearchParam
 from uuid import uuid4
 from .models.user import User
 import threading
+import time
 
 app = Flask(__name__)
 app.config["UPLOAD_FOLDER"] = "./uploads/"
@@ -28,22 +29,29 @@ from .document.document import document
 app.register_blueprint(auth, url_prefix = "/auth")
 app.register_blueprint(document, url_prefix = "/document")
 
+def add_data_to_qdrant(data, collection_name):
+    print("DOCUMENT DATA from THREAD", data)
+    print("COLLECTION NAME FROM THREAD", collection_name)
+
 def watch_changes_in_user_document():
+    print("Starting Thread...")
     try:
         collection = User._get_collection()
-
         pipeline = [
             {
                 "$match": {
-                    "updateDescription.updatedFields.user_documents": {"$exists": True},
-                    "operationType" : "update"
+                    "updateDescription.updatedFields.user_documents": {"$exists": True}
                 }
             }
         ]
-        with collection.watch(pipeline = pipeline) as stream: 
+        with collection.watch(pipeline = pipeline, full_document="updateLookup") as stream: 
             print("Listening to changes in the User Document")
             for change in stream:
-                print("CHANGE DETECTED" , change["updateDescription"])
+                collection_name = change['fullDocument']['qdrant_collection_name']
+                list_of_documents = change['updateDescription']['updatedFields']['user_documents']
+                for document in list_of_documents:
+                    if document["is_active"] == False:
+                        threading.Thread(target=add_data_to_qdrant, daemon=True, name=document['document_id'], args=(document,collection_name)).start()
     except Exception as e:
         return e
     
@@ -51,7 +59,6 @@ def watch_changes_in_user_document():
 
 change_stream_thread = threading.Thread(target=watch_changes_in_user_document, daemon=True, name="User-Collection-Thread")
 change_stream_thread.start()
-
 
 # def format_chunk(chunk, filename):
 #     chunk.metadata["source"] = filename
