@@ -3,10 +3,9 @@ from main.models.user import User
 import bcrypt
 from ..server_helper_functions import *
 import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 auth = Blueprint("auth", __name__)
-
 
 @auth.route("/signup", methods = ["POST"])
 def signup():
@@ -27,10 +26,10 @@ def signup():
                 result = temp_user.save()
                 
                 access_token_payload =  {}
-                access_token_payload["exp"] = datetime.now(tz = datetime.timezone.utc) + datetime.timedelta(minutes=30),
+                access_token_payload["iat"] = int(datetime.now(tz = timezone.utc).timestamp())
+                access_token_payload["exp"] = (datetime.now(tz = timezone.utc) + timedelta(hours=24)).timestamp()
+                access_token_payload["exp"] = int(access_token_payload["exp"])
                 access_token_payload["user_id"] = result.get_id()
-
-                print(server_config["JWT_SECRET"])
 
                 access_token = jwt.encode(
                     payload=access_token_payload, 
@@ -47,8 +46,40 @@ def signup():
         return failure(e)
     
 
-@auth.route("/protected", methods=["GET"])
-@token_required
-def protected_test(current_user):
-    print(current_user.get_id())
-    return "Reached a protected route"
+@auth.route("/signin", methods = ["POST"])
+def signin():
+    login_schema = {
+        "email" : {"type" : "string", "required" : True , "empty" : False},
+        "password" : {"type" : "string", "required" : True, "empty" : False},
+    }
+
+    try:
+        data = request.get_json()
+        if(schema_validator(login_schema, data)):
+            check_user = User.objects(email=data["email"]).first()
+            if check_user != None:
+
+                password_match = bcrypt.checkpw(data["password"].encode('utf-8'), check_user.password.encode('utf-8'))
+
+                if password_match: 
+                    access_token_payload =  {}
+                    access_token_payload["iat"] = int(datetime.now(tz = timezone.utc).timestamp())
+                    access_token_payload["exp"] = (datetime.now(tz = timezone.utc) + timedelta(hours=24)).timestamp()
+                    access_token_payload["exp"] = int(access_token_payload["exp"])
+                    access_token_payload["user_id"] = check_user.get_id()
+
+                    access_token = jwt.encode(
+                        payload=access_token_payload, 
+                        key=server_config["JWT_SECRET"],
+                        algorithm="HS256"
+                    )
+                
+                    return success({"message" : "Signin Successful", "access_token" : access_token})
+                else: 
+                    raise Exception("Password mis-match")
+            else:
+                raise Exception("User not found")
+        else:
+            raise Exception("Error in request schema")
+    except Exception as e: 
+        return failure(e)

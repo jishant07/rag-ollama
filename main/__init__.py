@@ -8,9 +8,11 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_community.llms.ollama import Ollama
 from qdrant_client.models import Filter, MatchValue, FieldCondition, SearchParams
 from uuid import uuid4
+from .models.user import User
+import threading
 
-app = Flask(__name__,template_folder='templates',static_url_path='/static')
-app.config["UPLOAD_FOLDER"] = "./sample_pdfs/uploads/"
+app = Flask(__name__)
+app.config["UPLOAD_FOLDER"] = "./uploads/"
 
 
 @app.route("/")
@@ -21,7 +23,35 @@ def start():
     })
 
 from .auth.auth import auth
+from .document.document import document
+
 app.register_blueprint(auth, url_prefix = "/auth")
+app.register_blueprint(document, url_prefix = "/document")
+
+def watch_changes_in_user_document():
+    try:
+        collection = User._get_collection()
+
+        pipeline = [
+            {
+                "$match": {
+                    "updateDescription.updatedFields.user_documents": {"$exists": True},
+                    "operationType" : "update"
+                }
+            }
+        ]
+        with collection.watch(pipeline = pipeline) as stream: 
+            print("Listening to changes in the User Document")
+            for change in stream:
+                print("CHANGE DETECTED" , change["updateDescription"])
+    except Exception as e:
+        return e
+    
+# Create change watch thread
+
+change_stream_thread = threading.Thread(target=watch_changes_in_user_document, daemon=True, name="User-Collection-Thread")
+change_stream_thread.start()
+
 
 # def format_chunk(chunk, filename):
 #     chunk.metadata["source"] = filename
