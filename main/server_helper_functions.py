@@ -74,3 +74,5 @@ def create_access_token(user_id):
         key=server_config["JWT_SECRET"],
         algorithm="HS256"
     )
+
+    return access_token

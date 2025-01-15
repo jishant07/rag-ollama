@@ -11,7 +11,7 @@ from qdrant_client.models import Filter, MatchValue, FieldCondition, SearchParam
 
 llm_chat = Blueprint("llm_chat", __name__)
 
-@llm_chat.route("/create_chat", methods=["GET"])
+@llm_chat.route("/create_chat", methods=["POST"])
 @token_required
 def create_chat(current_user):
     try:
@@ -46,7 +46,7 @@ def ask_question(current_user):
     vector_store = getQdrantCollection(current_user.qdrant_collection_name)
     results = vector_store.similarity_search_with_score(
         query=data["query_text"],
-        k=3
+        k=10
     )
 
     PROMPT_TEMPLATE = """
