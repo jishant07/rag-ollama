@@ -5,6 +5,8 @@ from main.server_helper_functions import token_required, success, failure
 from main.db_helper_functions import reference_id_generator
 import os
 from werkzeug.utils import secure_filename
+from ..tasks import add_document_to_vector_db
+import json
 
 document = Blueprint("document", __name__)
 
@@ -17,7 +19,7 @@ def upload_document(current_user):
             temp_document = UploadedDocument()
             temp_document.name = secure_filename(file_object.filename) if secure_filename(file_object.filename) else reference_id_generator()
 
-            check_if_file_name_exists = User.objects(id = current_user.get_id(), user_documents__name = temp_document.name)
+            check_if_file_name_exists = UploadedDocument.objects(name = temp_document.name)
 
             if len(check_if_file_name_exists) == 0:
 
@@ -28,10 +30,20 @@ def upload_document(current_user):
 
                 file_object.save(os.path.join("./uploads/"+current_user.get_id(), temp_document.name))
                 temp_document.location = os.path.join("./uploads/"+current_user.get_id(), temp_document.name)
-                user_docuements = current_user.user_documents if len(current_user.user_documents) > 0 else []
-                user_docuements.append(temp_document)
-                current_user.user_documents = user_docuements
-                current_user.save()
+                temp_document.document_id = reference_id_generator()
+                temp_document.user_id = current_user
+
+                temp_document.save()
+                
+                task_data = {
+                    "name" : temp_document.name,
+                    "user_id" : current_user.get_id(), 
+                    "location" : temp_document.location,
+                    "document_id" : temp_document.document_id,
+                    "qdrant_collection_name" : current_user.qdrant_collection_name
+                }
+
+                add_document_to_vector_db.delay(task_data)
 
                 return success({"message" : "File Upload Successful!"})
             
@@ -39,5 +51,15 @@ def upload_document(current_user):
                 raise Exception("You already have file with same name already uploaded")
         else:
             raise Exception("File not uploaded in the correct key")
+    except Exception as e: 
+        return failure(e)
+    
+
+@document.route("/list_documents", methods = ["GET"])
+@token_required
+def list_documents(current_user):
+    try: 
+        documents = json.loads(UploadedDocument.objects.filter(user_id = current_user.pk).to_json())
+        return success({"user_documents" : documents})
     except Exception as e: 
         return failure(e)

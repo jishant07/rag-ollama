@@ -23,19 +23,9 @@ def signup():
                 temp_user.email = data["email"]
                 temp_user.password = bcrypt.hashpw(data["password"].encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
                 temp_user.name = data["name"]
-                result = temp_user.save()
+                temp_user.save()
                 
-                access_token_payload =  {}
-                access_token_payload["iat"] = int(datetime.now(tz = timezone.utc).timestamp())
-                access_token_payload["exp"] = (datetime.now(tz = timezone.utc) + timedelta(hours=24)).timestamp()
-                access_token_payload["exp"] = int(access_token_payload["exp"])
-                access_token_payload["user_id"] = result.get_id()
-
-                access_token = jwt.encode(
-                    payload=access_token_payload, 
-                    key=server_config["JWT_SECRET"],
-                    algorithm="HS256"
-                )
+                access_token = create_access_token(request.get_id())
 
                 return success({"message" : "User Signup Success!", "access_token" : access_token})
             else:
@@ -62,18 +52,7 @@ def signin():
                 password_match = bcrypt.checkpw(data["password"].encode('utf-8'), check_user.password.encode('utf-8'))
 
                 if password_match: 
-                    access_token_payload =  {}
-                    access_token_payload["iat"] = int(datetime.now(tz = timezone.utc).timestamp())
-                    access_token_payload["exp"] = (datetime.now(tz = timezone.utc) + timedelta(hours=24)).timestamp()
-                    access_token_payload["exp"] = int(access_token_payload["exp"])
-                    access_token_payload["user_id"] = check_user.get_id()
-
-                    access_token = jwt.encode(
-                        payload=access_token_payload, 
-                        key=server_config["JWT_SECRET"],
-                        algorithm="HS256"
-                    )
-                
+                    access_token = create_access_token(check_user.get_id())
                     return success({"message" : "Signin Successful", "access_token" : access_token})
                 else: 
                     raise Exception("Password mis-match")

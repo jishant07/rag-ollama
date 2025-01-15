@@ -9,7 +9,6 @@ class User(Document):
     password = StringField(required = True)
     qdrant_collection_name = StringField(required = True)
     created = DateTimeField(default = lambda : datetime.now())
-    user_documents = ListField(EmbeddedDocumentField(UploadedDocument), default = [])
 
     def get_id(self):
         return str(self.pk)

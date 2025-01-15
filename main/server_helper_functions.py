@@ -6,6 +6,7 @@ from .config import server_config
 from .models.user import User
 import string
 import re
+from datetime import datetime, timezone, timedelta
 
 def success(data):
     return jsonify({
@@ -47,6 +48,8 @@ def token_required(f):
        try:
            data = jwt.decode(token, server_config["JWT_SECRET"], algorithms=["HS256"])
            current_user = User.objects(id = data["user_id"]).first()
+           if current_user == None:
+               return failure_withkeys({"message": "token is invalid"})
        except:
            return failure_withkeys({'message': 'token is invalid'})
  
@@ -57,3 +60,17 @@ def token_required(f):
 def clean_file_name(fileName):
     chars = re.escape(string.punctuation) + ' '
     return re.sub('['+chars+']', '_',fileName)
+
+
+def create_access_token(user_id):
+    access_token_payload =  {}
+    access_token_payload["iat"] = int(datetime.now(tz = timezone.utc).timestamp())
+    access_token_payload["exp"] = (datetime.now(tz = timezone.utc) + timedelta(hours=24)).timestamp()
+    access_token_payload["exp"] = int(access_token_payload["exp"])
+    access_token_payload["user_id"] = user_id
+
+    access_token = jwt.encode(
+        payload=access_token_payload, 
+        key=server_config["JWT_SECRET"],
+        algorithm="HS256"
+    )
