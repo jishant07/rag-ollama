@@ -22,10 +22,10 @@ def create_chat(current_user):
         document_array = []
         if schema_validator(create_chat_schema, data):
             for document_id in data["selected_documents"]:
-                not_exits = UploadedDocument.objects(user_id = current_user.id , id = document_id)
+                not_exits = UploadedDocument.objects(user_id = current_user.id , document_id = document_id)
                 if not not_exits:
                     raise Exception("Some of the document selected are invalid")
-                document_array.append(ObjectId(document_id))
+                document_array.append(document_id)
 
             chat_object = Chat()
             chat_object.user_id = current_user
