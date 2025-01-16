@@ -41,36 +41,49 @@ def create_chat(current_user):
 @llm_chat.route("/ask_question", methods = ["POST"])
 @token_required
 def ask_question(current_user):
-    data = request.get_json()
 
-    vector_store = getQdrantCollection(current_user.qdrant_collection_name)
-    results = vector_store.similarity_search_with_score(
-        query=data["query_text"],
-        k=10
-    )
+    try:
 
-    PROMPT_TEMPLATE = """
-        You are a teacher that answers questions based on the following context:
-        {context}
+        chat_schema = {
+            "chat_id" : {"type" : "string", "required" : True , "empty" : False},
+            "query_text" : {"type" : "string", "required" : True , "empty" : False}
+        }
 
-        ---
-        Answer the student's question {question} based on the context given above.
-        Don't mention that the answer is talking from context.
-    """
+        data = request.get_json()
+        
+        chat_data = Chat.objects(pk = data["chat_id"]).first().to_json()
 
-    print(results)
+        print(chat_data)
 
-    for doc, score in results:
-        print(f"* [SIM={score:3f}] {doc.page_content} [{doc.metadata}]")
+        vector_store = getQdrantCollection(current_user.qdrant_collection_name)
+        results = vector_store.similarity_search_with_score(
+            query=data["query_text"],
+            k=10
+        )
 
-    context_text = "\n\n---\n\n".join([doc.page_content for doc, _score in results])
-    prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
-    prompt = prompt_template.format(context= context_text, question = data["query_text"])
+        PROMPT_TEMPLATE = """
+            You are a teacher that answers questions based on the following context:
+            {context}
 
+            ---
+            Answer the student's question {question} based on the context given above.
+            Don't mention that the answer is talking from context.
+        """
 
-    def generate():
-        model = Ollama(model="mistral")
-        for chunk in model.stream(prompt):
-            yield chunk 
+        print(results)
 
-    return generate(), {"Content-Type": "text/plain"}
+        for doc, score in results:
+            print(f"* [SIM={score:3f}] {doc.page_content} [{doc.metadata}]")
+
+        context_text = "\n\n---\n\n".join([doc.page_content for doc, _score in results])
+        prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
+        prompt = prompt_template.format(context= context_text, question = data["query_text"])
+
+        def generate():
+            model = Ollama(model="mistral")
+            for chunk in model.stream(prompt):
+                yield chunk 
+
+        return generate(), {"Content-Type": "text/plain"}
+    except Exception as e: 
+        return failure(e)
