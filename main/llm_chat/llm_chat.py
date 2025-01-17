@@ -43,47 +43,60 @@ def create_chat(current_user):
 def ask_question(current_user):
 
     try:
-
         chat_schema = {
             "chat_id" : {"type" : "string", "required" : True , "empty" : False},
             "query_text" : {"type" : "string", "required" : True , "empty" : False}
         }
 
         data = request.get_json()
+
+        if schema_validator(chat_schema, data):
+            
         
-        chat_data = Chat.objects(pk = data["chat_id"]).first().to_json()
+            chat_data = Chat.objects(pk = data["chat_id"], user_id=ObjectId(current_user.pk)).first()
 
-        print(chat_data)
+            if chat_data:
+                
+                vector_store = getQdrantCollection(current_user.qdrant_collection_name)
 
-        vector_store = getQdrantCollection(current_user.qdrant_collection_name)
-        results = vector_store.similarity_search_with_score(
-            query=data["query_text"],
-            k=10
-        )
+                filter_condition = []
 
-        PROMPT_TEMPLATE = """
-            You are a teacher that answers questions based on the following context:
-            {context}
+                def get_filter(document_id: str):
+                    return FieldCondition(key="metadata.document_id", match=MatchValue(value=document_id))
 
-            ---
-            Answer the student's question {question} based on the context given above.
-            Don't mention that the answer is talking from context.
-        """
+                for document_id in chat_data.selected_documents:
+                    filter_condition.append(get_filter(document_id))
 
-        print(results)
+                results = vector_store.similarity_search_with_score(
+                    query=data["query_text"],
+                    k=10,
+                    filter=Filter(
+                        should=filter_condition
+                    )
+                )
 
-        for doc, score in results:
-            print(f"* [SIM={score:3f}] {doc.page_content} [{doc.metadata}]")
+                PROMPT_TEMPLATE = """
+                    You are a teacher that answers questions based on the following context:
+                    {context}
 
-        context_text = "\n\n---\n\n".join([doc.page_content for doc, _score in results])
-        prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
-        prompt = prompt_template.format(context= context_text, question = data["query_text"])
+                    ---
+                    Answer the student's question {question} based on the context given above.
+                    Don't mention that the answer is talking from context.
+                """
 
-        def generate():
-            model = Ollama(model="mistral")
-            for chunk in model.stream(prompt):
-                yield chunk 
+                context_text = "\n\n---\n\n".join([doc.page_content for doc, _score in results])
+                prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
+                prompt = prompt_template.format(context= context_text, question = data["query_text"])
 
-        return generate(), {"Content-Type": "text/plain"}
+                def generate():
+                    model = Ollama(model="mistral")
+                    for chunk in model.stream(prompt):
+                        yield chunk 
+
+                return generate(), {"Content-Type": "text/plain"}
+            else:
+                raise Exception("Chat not found")
+        else: 
+            raise Exception("Request Schema Error")
     except Exception as e: 
         return failure(e)
