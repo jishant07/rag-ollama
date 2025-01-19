@@ -1,6 +1,7 @@
 from flask import Flask
 from .config import server_config
 from .make_celery import celery_init_app
+from flask_cors import CORS
 
 def create_app():
     app = Flask(__name__)
@@ -18,6 +19,8 @@ def create_app():
         "result_backend" : "redis://localhost/0",
         "broker_connection_retry_on_startup" : True
     }
+
+    CORS(app)
 
     celery = celery_init_app(app=app)
     celery.set_default()

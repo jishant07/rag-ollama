@@ -18,13 +18,13 @@ def failure(e):
     return jsonify({
         "success" : False,
         "message" : str(e)
-    })
+    }), 500
 
 def failure_withkeys(e):
     return jsonify({
         "success" : False, 
         **e
-    })
+    }),500
 
 def schema_validator(schema, body):
     validator = Validator(schema)

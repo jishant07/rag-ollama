@@ -8,6 +8,7 @@ from bson import ObjectId
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_community.llms.ollama import Ollama
 from qdrant_client.models import Filter, MatchValue, FieldCondition, SearchParams
+import json
 
 llm_chat = Blueprint("llm_chat", __name__)
 
@@ -32,9 +33,21 @@ def create_chat(current_user):
             chat_object.selected_documents = document_array
             chat_object.save()
 
-            return success({"message" : "Chat successfully added"})
+            return success({"message" : "Chat successfully added", "chat_id": str(chat_object.pk)})
         else:
             raise Exception("Schema Structure Error")
+    except Exception as e:
+        return failure(e)
+    
+@llm_chat.route("/list_chats", methods = ["GET"])
+@token_required
+def getChats(current_user):
+    try:
+        chat_data = []
+        chat_list = Chat.objects(user_id = current_user)
+        for chat in chat_list:
+            chat_data.append(chat.get_chat_data())
+        return success({"chat_list" : chat_data})
     except Exception as e:
         return failure(e)
     
@@ -87,7 +100,7 @@ def ask_question(current_user):
                 context_text = "\n\n---\n\n".join([doc.page_content for doc, _score in results])
                 prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
                 prompt = prompt_template.format(context= context_text, question = data["query_text"])
-
+                print("RUNNING THE AI....")
                 def generate():
                     model = Ollama(model="mistral")
                     for chunk in model.stream(prompt):

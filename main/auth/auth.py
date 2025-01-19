@@ -25,7 +25,7 @@ def signup():
                 temp_user.name = data["name"]
                 temp_user.save()
                 
-                access_token = create_access_token(request.get_id())
+                access_token = create_access_token(temp_user.get_id())
 
                 return success({"message" : "User Signup Success!", "access_token" : access_token})
             else:
