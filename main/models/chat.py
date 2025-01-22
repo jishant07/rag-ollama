@@ -5,6 +5,7 @@ import json
 class Chat(Document):
     user_id = ReferenceField("User", required = True)
     selected_documents = ListField(StringField(), default = [])
+    chat_title = StringField(required = True)
 
     def get_chat_data(self):
 
@@ -15,5 +16,6 @@ class Chat(Document):
 
         return {
             "chat_id" : str(self.pk),
-            "documents" : document_list
+            "documents" : document_list,
+            "chat_title" : self.chat_title
         }

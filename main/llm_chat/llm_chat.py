@@ -1,4 +1,4 @@
-from flask import Blueprint, request
+from flask import Blueprint, Response, request, stream_with_context
 
 from main.server_helper_functions import token_required, success, failure, schema_validator
 from main.vector_helper_functions import getQdrantCollection
@@ -6,9 +6,8 @@ from ..models.uploaded_document import UploadedDocument
 from ..models.chat import Chat
 from bson import ObjectId
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_community.llms.ollama import Ollama
-from qdrant_client.models import Filter, MatchValue, FieldCondition, SearchParams
-import json
+from langchain_ollama import OllamaLLM
+from qdrant_client.models import Filter, MatchValue, FieldCondition
 
 llm_chat = Blueprint("llm_chat", __name__)
 
@@ -18,22 +17,28 @@ def create_chat(current_user):
     try:
         create_chat_schema = {
             "selected_documents" : {"type" : ["string", "list"], "required" : True , "empty" : False},
+            "chat_title" : {"type" : "string", "required" : True, "empty" : False}
         }
         data = request.get_json()
         document_array = []
         if schema_validator(create_chat_schema, data):
-            for document_id in data["selected_documents"]:
-                not_exits = UploadedDocument.objects(user_id = current_user.id , document_id = document_id)
-                if not not_exits:
-                    raise Exception("Some of the document selected are invalid")
-                document_array.append(document_id)
+            list_chat = Chat.objects(chat_title__iexact = data["chat_title"], user_id = ObjectId(current_user.get_id())).first()
+            if not list_chat : 
+                for document_id in data["selected_documents"]:
+                    not_exits = UploadedDocument.objects(user_id = current_user.id , document_id = document_id)
+                    if not not_exits:
+                        raise Exception("Some of the document selected are invalid")
+                    document_array.append(document_id)
 
-            chat_object = Chat()
-            chat_object.user_id = current_user
-            chat_object.selected_documents = document_array
-            chat_object.save()
+                chat_object = Chat()
+                chat_object.chat_title = data["chat_title"]
+                chat_object.user_id = current_user
+                chat_object.selected_documents = document_array
+                chat_object.save()
 
-            return success({"message" : "Chat successfully added", "chat_id": str(chat_object.pk)})
+                return success({"message" : "Chat successfully added", "chat_id": str(chat_object.pk)})
+            else:
+                raise Exception("Chat with same title already exists")
         else:
             raise Exception("Schema Structure Error")
     except Exception as e:
@@ -70,6 +75,8 @@ def ask_question(current_user):
 
             if chat_data:
                 
+                model = OllamaLLM(model="mistral")
+
                 vector_store = getQdrantCollection(current_user.qdrant_collection_name)
 
                 filter_condition = []
@@ -95,6 +102,7 @@ def ask_question(current_user):
                     ---
                     Answer the student's question {question} based on the context given above.
                     Don't mention that the answer is talking from context.
+                    give me response only in Markdown and format it as best as possible
                 """
 
                 context_text = "\n\n---\n\n".join([doc.page_content for doc, _score in results])
@@ -102,11 +110,10 @@ def ask_question(current_user):
                 prompt = prompt_template.format(context= context_text, question = data["query_text"])
                 print("RUNNING THE AI....")
                 def generate():
-                    model = Ollama(model="mistral")
                     for chunk in model.stream(prompt):
                         yield chunk 
 
-                return generate(), {"Content-Type": "text/plain"}
+                return Response(stream_with_context(generate()))
             else:
                 raise Exception("Chat not found")
         else: 
