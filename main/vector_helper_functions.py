@@ -6,7 +6,7 @@ from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, VectorParams
 
-client = QdrantClient(url="http://localhost:6333")
+client = QdrantClient("localhost", port=6333)
 
 def document_splitter(documents: list[Document]):
     text_splitter = RecursiveCharacterTextSplitter(
@@ -27,6 +27,8 @@ def get_embedding_function():
 def getQdrantCollection(collection_name):
     
     is_exists = client.collection_exists(collection_name=collection_name)
+
+    print("ALL COLLECTIONS", client.get_collections())
     
     if not is_exists:
 

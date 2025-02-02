@@ -1,5 +1,6 @@
 from flask import Blueprint, Response, request, stream_with_context
 
+from main.models.message import ChatMessage
 from main.server_helper_functions import token_required, success, failure, schema_validator
 from main.vector_helper_functions import getQdrantCollection
 from ..models.uploaded_document import UploadedDocument
@@ -89,7 +90,7 @@ def ask_question(current_user):
 
                 results = vector_store.similarity_search_with_score(
                     query=data["query_text"],
-                    k=10,
+                    k=20,
                     filter=Filter(
                         should=filter_condition
                     )
@@ -119,4 +120,53 @@ def ask_question(current_user):
         else: 
             raise Exception("Request Schema Error")
     except Exception as e: 
+        return failure(e)
+    
+@llm_chat.route("/save_chat_message", methods = ["POST"])
+@token_required
+def save_chat_message(current_user):
+
+    chat_schema = {
+        "chat_id" : {"type" : "string", "required" : True , "empty" : False},
+        "message_by" : {"type": "string", "required": True, "empty" : False, 'allowed': ['agent', 'user',]},
+        "message_text" : {"type" : "string", "required" : True, "empty" : False}
+    }
+
+    data = request.get_json()
+
+    try:
+        if(schema_validator(chat_schema, data)):
+            chat_object = Chat.objects.filter(id = data["chat_id"], user_id = ObjectId(current_user.get_id())).first()
+            chat_message_object = ChatMessage()
+            chat_message_object.message_by = data["message_by"]
+            chat_message_object.message_text = data["message_text"]
+
+            chat_object.chat_messages.append(chat_message_object)
+
+            chat_object.save()
+
+            return success({"message_added" : True})
+        else:
+            raise Exception("Schema Error")
+    except Exception as e:
+        print(e)
+        return failure(e)
+    
+
+@llm_chat.route("/list_chat_messages", methods=["POST"])
+@token_required
+def list_chat_messages(current_user):
+    list_chat_schema = {
+         "chat_id" : {"type" : "string", "required" : True , "empty" : False}
+    }
+
+    try:
+        data = request.get_json()
+        print(data)
+        if schema_validator(list_chat_schema, data):
+            chat_object = Chat.objects.filter(id = data["chat_id"], user_id = ObjectId(current_user.get_id())).first()
+            return success({"chat_messages" : chat_object.get_chat_messages()})
+        else:
+            raise Exception("SChema Error")
+    except Exception as e:
         return failure(e)

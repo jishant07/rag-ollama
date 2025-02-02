@@ -4,6 +4,7 @@ from .models.uploaded_document import UploadedDocument
 from .vector_helper_functions import *
 from uuid import uuid4
 from langchain_community.document_loaders import PyPDFLoader
+import os
 
 def format_chunk(chunk, filename, document_id, user_id):
     chunk.metadata["source"] = filename
@@ -25,9 +26,8 @@ def add_document_to_vector_db(self, data):
 
     add_data_to_qdrant(data)
     uploaded_document = UploadedDocument.objects.filter(document_id = data["document_id"]).first()
-    print(uploaded_document)
     uploaded_document.is_active = True
-
     uploaded_document.save()
+    os.remove(uploaded_document.location)
 
     print("===Killing thread====" + data["document_id"])

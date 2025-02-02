@@ -18,7 +18,7 @@ app.config["UPLOAD_FOLDER"] = "./uploads/"
 def start():
     return json.dumps({
         "message" : "success", 
-        "result" : "Server is up and running"
+        "result" : "Server is up and running?"
     })
 
 # def watch_changes_in_user_document():
