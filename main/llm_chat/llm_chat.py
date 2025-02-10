@@ -1,4 +1,5 @@
 from flask import Blueprint, Response, request, stream_with_context
+from .prompts import system_prompt, contextualize_question_prompt
 
 from main.models.message import ChatMessage
 from main.server_helper_functions import token_required, success, failure, schema_validator
@@ -6,9 +7,14 @@ from main.vector_helper_functions import getQdrantCollection
 from ..models.uploaded_document import UploadedDocument
 from ..models.chat import Chat
 from bson import ObjectId
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_ollama import OllamaLLM
 from qdrant_client.models import Filter, MatchValue, FieldCondition
+from langchain.chains.combine_documents.stuff import create_stuff_documents_chain
+from langchain.chains.history_aware_retriever import create_history_aware_retriever
+from langchain.chains.retrieval import create_retrieval_chain
+from langchain_core.messages import AIMessage, HumanMessage
+
 
 llm_chat = Blueprint("llm_chat", __name__)
 
@@ -71,12 +77,10 @@ def ask_question(current_user):
 
         if schema_validator(chat_schema, data):
             
-        
             chat_data = Chat.objects(pk = data["chat_id"], user_id=ObjectId(current_user.pk)).first()
-
             if chat_data:
                 
-                model = OllamaLLM(model="mistral")
+                model = OllamaLLM(model="llama3.1:8b")
 
                 vector_store = getQdrantCollection(current_user.qdrant_collection_name)
 
@@ -88,33 +92,51 @@ def ask_question(current_user):
                 for document_id in chat_data.selected_documents:
                     filter_condition.append(get_filter(document_id))
 
-                results = vector_store.similarity_search_with_score(
-                    query=data["query_text"],
-                    k=20,
-                    filter=Filter(
-                        should=filter_condition
-                    )
+                vector_retriver = vector_store.as_retriever(
+                    seach_type = "similarity_score_threshold",
+                    search_kwargs = {
+                        "k" : 20,
+                        "score_threshold" : 0.5,
+                        "filter": Filter(
+                            should=filter_condition
+                        )
+                    }
                 )
 
-                PROMPT_TEMPLATE = """
-                    You are a teacher that answers questions based on the following context:
-                    {context}
+                prompt_context = ChatPromptTemplate.from_messages(
+                    [
+                        ("system", contextualize_question_prompt),
+                        MessagesPlaceholder(variable_name="chat_history"),
+                        ("human", "{input}")
+                    ]
+                )
 
-                    ---
-                    Answer the student's question {question} based on the context given above.
-                    Don't mention that the answer is talking from context.
-                    give me response only in Markdown and format it as best as possible
-                """
+                history_aware = create_history_aware_retriever(model,vector_retriver,prompt_context)
+                
+                main_question_answer_prompt = ChatPromptTemplate.from_messages(
+                    [
+                        ("system", system_prompt),
+                        MessagesPlaceholder(variable_name="chat_history"),
+                        ("human", "{input}")
+                    ]
+                )
 
-                context_text = "\n\n---\n\n".join([doc.page_content for doc, _score in results])
-                prompt_template = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
-                prompt = prompt_template.format(context= context_text, question = data["query_text"])
-                print("RUNNING THE AI....")
+
+                question_answer_chain = create_stuff_documents_chain(model, main_question_answer_prompt)
+                chain = create_retrieval_chain(history_aware, question_answer_chain)
+
+                chat_history = [
+                    AIMessage(message.message_text) if message.message_by == 'agent' else HumanMessage(message.message_text)
+                    for message in chat_data.chat_messages
+                ]
+
                 def generate():
-                    for chunk in model.stream(prompt):
-                        yield chunk 
 
-                return Response(stream_with_context(generate()))
+                    for chunk in chain.stream({"input": data["query_text"], "chat_history": chat_history}):
+                        if answer_chunk := chunk.get("answer"):
+                            yield answer_chunk
+
+                return Response(stream_with_context(generate()), content_type="text/event-stream")
             else:
                 raise Exception("Chat not found")
         else: 

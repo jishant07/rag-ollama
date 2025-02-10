@@ -27,8 +27,6 @@ def get_embedding_function():
 def getQdrantCollection(collection_name):
     
     is_exists = client.collection_exists(collection_name=collection_name)
-
-    print("ALL COLLECTIONS", client.get_collections())
     
     if not is_exists:
 
