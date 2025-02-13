@@ -4,6 +4,7 @@ from .models.uploaded_document import UploadedDocument
 from .vector_helper_functions import *
 from uuid import uuid4
 from langchain_community.document_loaders import PyPDFLoader
+import ffmpeg
 import os
 
 def format_chunk(chunk, filename, document_id, user_id):
@@ -31,3 +32,8 @@ def add_document_to_vector_db(self, data):
     os.remove(uploaded_document.location)
 
     print("===Killing thread====" + data["document_id"])
+
+@shared_task(bind=True, base = AbortableTask)
+def extract_data_from_video(self, data):
+    ffmpeg.input(data["location"])
+    ffmpeg.output('test.mp3', acodec='mp3').run()
